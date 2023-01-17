@@ -1,8 +1,6 @@
-import os, asyncio, datetime, re
+import datetime
 from aiogram import Bot, types
 from aiogram.dispatcher import Dispatcher, FSMContext
-from aiogram.dispatcher.filters import Text
-from aiogram.dispatcher.filters.state import StatesGroup, State
 from aiogram.contrib.fsm_storage.redis import RedisStorage2
 from aiogram.utils import executor, exceptions
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -12,6 +10,7 @@ from low_level.parser import *
 from resources.models import *
 from resources.states import *
 
+
 async def eduhouse_check():
     files = download_docs()
     db_files = session.query(ParsedFiles).all()
@@ -20,29 +19,34 @@ async def eduhouse_check():
             session.delete(filecheck)
     for file in files:
         if not session.query(ParsedFiles).filter(ParsedFiles.filename == file).first():
-            new_file = ParsedFiles(filename = file)
+            new_file = ParsedFiles(filename=file)
             session.add(new_file)
             substitutions = parse(file)
             for sub in substitutions:
-                    group = session.query(Group).filter(Group.group_name == sub.group).first()
-                    if not group:
-                        group = Group(group_name = sub.group)
-                        session.add(group)
-                    sub_db = Substitution(file = new_file, pair_num = sub.pair_num, init_pair = sub.init_pair, sub_pair = sub.sub_pair, cab = sub.cab, group = group)
-                    session.add(sub_db)
-                    session.commit()
-            remove_cache()        
+                group = session.query(Group).filter(Group.group_name == sub.group).first()
+                if not group:
+                    group = Group(group_name=sub.group)
+                    session.add(group)
+                sub_db = Substitution(file=new_file, pair_num=sub.pair_num, init_pair=sub.init_pair,
+                                      sub_pair=sub.sub_pair, cab=sub.cab, group=group)
+                session.add(sub_db)
+                session.commit()
+            remove_cache()
         else:
             os.remove(file)
             continue
     session.commit()
 
+
 async def notification(user: Auth):
-    if user.notification == False:
+    if not user.notification:
         return
     if len(user.group.subs) == 0:
         await bot.send_message(user.user_id, "Привет! Для твоей группы не найдено актуальных замен")
-    await bot.send_message(user.user_id, "Привет! Начинаем рассылку актуальных замен\nДля твоей группы найдены следующие замены: ")
+    else:
+        await bot.send_message(user.user_id,
+                               "Привет! Начинаем рассылку актуальных замен\n"
+                               "Для твоей группы найдены следующие замены: ")
     for substitution in user.group.subs:
         try:
             date = substitution.file.filename[0:10]
@@ -52,53 +56,80 @@ async def notification(user: Auth):
             if filter_date < current_date:
                 continue
             elif filter_date >= current_date:
-                await bot.send_message(user.user_id, f"📌 Замещение на {date}:\n🔢 Номер пары: {substitution.pair_num}\n📖 Предмет по расписанию: {substitution.init_pair}\n📝 Замена: {substitution.sub_pair}\n🚪 Кабинет: {substitution.cab}")
+                await bot.send_message(user.user_id,
+                                       f"📌 Замещение на {date}:\n🔢 Номер пары: {substitution.pair_num}\n"
+                                       f"📖 Предмет по расписанию: {substitution.init_pair}\n📝 "
+                                       f"Замена: {substitution.sub_pair}\n🚪 "
+                                       f"Кабинет: {substitution.cab}")
         except BotBlocked:
             return
-        
-bot = Bot(token = os.environ["BOT_TOKEN"], parse_mode = 'html')
-storage = RedisStorage2("localhost", 6379, pool_size = 40, prefix = "interesting_fsm_key")
-dp = Dispatcher(bot, storage = storage)
+
+
+bot = Bot(token=os.environ["BOT_TOKEN"], parse_mode='html')
+storage = RedisStorage2("localhost", 6379, pool_size=40, prefix="interesting_fsm_key")
+dp = Dispatcher(bot, storage=storage)
 scheduler = AsyncIOScheduler()
 
-@dp.message_handler(commands = ["start", "begin"], state = "*")
+
+@dp.message_handler(commands=["start", "begin"], state="*")
 async def start(message: types.Message):
     auth = session.query(Auth).filter(Auth.user_id == message.from_user.id).first()
     if auth:
         await UserState.user_authorized.set()
-        await message.answer(f"Привет! 👋\nТы ранее уже авторизовывался в группе {auth.group.group_name}\nЕсли ты хочешь сменить группу, используй команду /change_group\nДля получения справки и списка доступных команд используй команду /help\n(Разработал и выпустил - Каравайчик Александр)")
+        await message.answer(
+            f"Привет! 👋\nТы ранее уже авторизовывался в группе {auth.group.group_name}\n"
+            f"Если ты хочешь сменить группу, используй команду /change_group\n"
+            f"Для получения справки и списка доступных команд используй команду /help\n"
+            f"(Разработал и выпустил - Каравайчик Александр)")
     else:
         await UserState.user_default_state.set()
-        await message.answer(text = "Привет! 👋\nПрежде чем начать пользоваться ботом, тебе необходимо авторизоваться.\nДля этого используй команду <i>/auth</i>\n(Разработал и выпустил - Каравайчик Александр)")
+        await message.answer(
+            text="Привет! 👋\nПрежде чем начать пользоваться ботом, тебе необходимо авторизоваться.\n"
+                 "Для этого используй команду <i>/auth</i>\n"
+                 "(Разработал и выпустил - Каравайчик Александр)")
 
-@dp.message_handler(commands = ["auth"], state = UserState.user_default_state)
+
+@dp.message_handler(commands=["auth"], state=UserState.user_default_state)
 async def ask_group(message: types.Message):
     await UserState.user_group_required.set()
-    await message.answer("✏️ Для того, чтобы тебя авторизовать, мне необходимо знать, в какой группе ты учишься. Напиши свою учебную группу, например 9ПО-21. Если твоей группы нет в списке, значит для нее еще не было добавлено замещений. Не переживай, как только они появятся, твоя группа будет добавлена в базу.")
+    await message.answer(
+        "✏️ Для того, чтобы тебя авторизовать, мне необходимо знать, в какой группе ты учишься. "
+        "Напиши свою учебную группу, например 9ПО-21. "
+        "Если твоей группы нет в списке, значит для нее еще не было добавлено замещений. "
+        "Не переживай, как только они появятся, твоя группа будет добавлена в базу.")
 
-@dp.message_handler(state = UserState.user_group_required)
+
+@dp.message_handler(state=UserState.user_group_required)
 async def authorization(message: types.Message):
     try_group = session.query(Group).filter(Group.group_name == message.text).first()
     if try_group is None:
-        await message.answer("⛔️ Ошибка: такой группы не найдено! Проверь правильность написания, если все правильно, значит твоей группы еще нет в базе")
+        await message.answer(
+            "⛔️ Ошибка: такой группы не найдено! "
+            "Проверь правильность написания, если все правильно, значит твоей группы "
+            "еще нет в базе")
         return
-    new_auth = Auth(user_id = message.from_user.id, group_id = try_group.id)
+    new_auth = Auth(user_id=message.from_user.id, group_id=try_group.id)
     session.add(new_auth)
     session.commit()
-    scheduler.add_job(notification, "cron", hour = new_auth.hour, minute = new_auth.minute, id  = new_auth.user_id, args = (new_auth,))
+    scheduler.add_job(notification, "cron", hour=new_auth.hour, minute=new_auth.minute,
+                      id=new_auth.user_id, args=(new_auth,))
     await message.answer(f"✅ Вы успешно авторизовались в группе {try_group.group_name}")
     await UserState.user_authorized.set()
 
-@dp.message_handler(commands = ["change_group"], state = UserState.user_authorized)
+
+@dp.message_handler(commands=["change_group"], state=UserState.user_authorized)
 async def ask_group_change(message: types.Message):
     await UserState.user_changing_group.set()
     await message.answer("✏️ Напиши новую группу, в которой ты хочешь авторизоваться")
 
-@dp.message_handler(state = UserState.user_changing_group)
+
+@dp.message_handler(state=UserState.user_changing_group)
 async def group_change(message: types.Message):
     try_group = session.query(Group).filter(Group.group_name == message.text).first()
     if try_group is None:
-        await message.answer("⛔️ Ошибка: такой группы не найдено! Проверь правильность написания, если все правильно, значит твоей группы еще нет в базе")
+        await message.answer(
+            "⛔️ Ошибка: такой группы не найдено! Проверь правильность написания, "
+            "если все правильно, значит твоей группы еще нет в базе")
         return
     user_to_change = session.query(Auth).filter(Auth.user_id == message.from_user.id).first()
     user_to_change.group = try_group
@@ -107,7 +138,8 @@ async def group_change(message: types.Message):
     await message.answer(f"✅ Вы успешно авторизовались в группе {try_group.group_name}")
     await UserState.user_authorized.set()
 
-@dp.message_handler(commands = ["substitutions"], state = UserState.user_authorized)
+
+@dp.message_handler(commands=["substitutions"], state=UserState.user_authorized)
 async def get_substitutions(message: types.Message):
     auth = session.query(Auth).filter(Auth.user_id == message.from_user.id).first()
     substitutions = session.query(Substitution).filter(Substitution.group == auth.group).all()
@@ -122,56 +154,81 @@ async def get_substitutions(message: types.Message):
             if filter_date < current_date:
                 continue
             elif filter_date >= current_date:
-                await message.answer(f"📌 Замещение на {date}:\n🔢 Номер пары: {substitution.pair_num}\n📖 Предмет по расписанию: {substitution.init_pair}\n📝 Замена: {substitution.sub_pair}\n🚪 Кабинет: {substitution.cab}")
+                await message.answer(
+                    f"📌 Замещение на {date}:\n"
+                    f"🔢 Номер пары: {substitution.pair_num}\n"
+                    f"📖 Предмет по расписанию: {substitution.init_pair}\n"
+                    f"📝 Замена: {substitution.sub_pair}\n"
+                    f"🚪 Кабинет: {substitution.cab}")
 
-@dp.message_handler(commands = ["disable_notifications"], state = UserState.user_authorized)
-@dp.message_handler(content_types=["text"], text = "Отключить рассылку", state = UserState.user_authorized)
+
+@dp.message_handler(commands=["disable_notifications"], state=UserState.user_authorized)
+@dp.message_handler(content_types=["text"], text="Отключить рассылку", state=UserState.user_authorized)
 async def disable_notifications(message: types.Message):
     auth = session.query(Auth).filter(Auth.user_id == message.from_user.id).first()
-    if auth.notification == False:
-        await message.answer("⛔️ Ошибка: уведомления уже отключены", reply_markup = types.ReplyKeyboardRemove())
+    if not auth.notification:
+        await message.answer("⛔️ Ошибка: уведомления уже отключены", reply_markup=types.ReplyKeyboardRemove())
         return
     auth.notification = False
     session.add(auth)
     session.commit()
-    await message.answer("✅ Уведомления о заменах успешно отключены", reply_markup = types.ReplyKeyboardRemove())
+    await message.answer("✅ Уведомления о заменах успешно отключены", reply_markup=types.ReplyKeyboardRemove())
 
-@dp.message_handler(commands = ["enable_notifications"], state = UserState.user_authorized)
-@dp.message_handler(content_types=["text"], text = "Включить рассылку", state = UserState.user_authorized)
+
+@dp.message_handler(commands=["enable_notifications"], state=UserState.user_authorized)
+@dp.message_handler(content_types=["text"], text="Включить рассылку", state=UserState.user_authorized)
 async def enable_notifications(message: types.Message):
     auth = session.query(Auth).filter(Auth.user_id == message.from_user.id).first()
-    if auth.notification == True:
-        await message.answer("⛔️ Ошибка: уведомления уже включены", reply_markup = types.ReplyKeyboardRemove())
+    if auth.notification:
+        await message.answer("⛔️ Ошибка: уведомления уже включены", reply_markup=types.ReplyKeyboardRemove())
         return
     auth.notification = True
     session.add(auth)
     session.commit()
-    await message.answer("✅ Уведомления о заменах успешно включены", reply_markup = types.ReplyKeyboardRemove())
+    await message.answer("✅ Уведомления о заменах успешно включены", reply_markup=types.ReplyKeyboardRemove())
 
-@dp.message_handler(commands = ["help"], state = [UserState.user_default_state, UserState.user_authorized])
+
+@dp.message_handler(commands=["help"], state=[UserState.user_default_state, UserState.user_authorized])
 async def help(message: types.Message):
-    await message.answer("📜 Справка: Данный бот помогает студентам узнавать об изменениях в раписании, которые выкладываются на портале\nРазработал студент группы 9ПО-21 Каравайчик Александр\nСписок команд:\n<i>/start</i> - Начало работы\n<i>/help</i> - Справка\n<i>/auth</i> - Авторизация\n<i>/change_group</i> - Смена группы\n<i>/substitutions</i> - Получение актуальных замен для твоей группы\n<i>/disable_notifications</i> - Отключение ежедневной рассылки\n<i>/enable_notifications</i> - Включение ежедневной рассылки")
+    await message.answer(
+        "📜 Справка: Данный бот помогает студентам узнавать об изменениях в раписании, которые выкладываются на портале"
+        "\nРазработал студент группы 9ПО-21 Каравайчик Александр\n"
+        "Список команд:\n"
+        "<i>/start</i> - Начало работы\n"
+        "<i>/help</i> - Справка\n"
+        "<i>/auth</i> - Авторизация\n"
+        "<i>/change_group</i> - Смена группы\n"
+        "<i>/substitutions</i> - Получение актуальных замен для твоей группы\n"
+        "<i>/disable_notifications</i> - Отключение ежедневной рассылки\n"
+        "<i>/enable_notifications</i> - Включение ежедневной рассылки")
 
-@dp.errors_handler(exception = exceptions.RetryAfter)
+
+@dp.errors_handler(exception=exceptions.RetryAfter)
 async def retry_after_handler(update: types.Update, exception: exceptions.RetryAfter):
     if update.message is not None:
-        await bot.send_message(update.message.from_user.id, f"Произошла ошибка на сервере! Пожалуйста, подождите {exception.timeout}")
-    
+        await bot.send_message(update.message.from_user.id,
+                               f"Произошла ошибка на сервере! Пожалуйста, подождите {exception.timeout}")
+
     return True
 
-@dp.message_handler(commands=["config_time"], state = UserState.user_authorized)
-@dp.message_handler(content_types=["text"], text = "Настройка времени рассылки", state = UserState.user_authorized)
+
+@dp.message_handler(commands=["config_time"], state=UserState.user_authorized)
+@dp.message_handler(content_types=["text"], text="Настройка времени рассылки", state=UserState.user_authorized)
 async def config_time(message: types.Message, state: FSMContext):
-    cancel = types.ReplyKeyboardMarkup(row_width = 1, one_time_keyboard = True).add(types.KeyboardButton(text = "Отмена"))
-    await message.answer("Для настройки персонального времени рассылки пришли мне час (от 0 до 23)", reply_markup=cancel)
+    cancel = types.ReplyKeyboardMarkup(row_width=1, one_time_keyboard=True).add(types.KeyboardButton(text="Отмена"))
+    await message.answer("Для настройки персонального времени рассылки пришли мне час (от 0 до 23)",
+                         reply_markup=cancel)
     await UserState.user_setting_hour.set()
 
-@dp.message_handler(content_types = ["text"], text = "Отмена", state = [UserState.user_setting_hour, UserState.user_setting_minute])
+
+@dp.message_handler(content_types=["text"], text="Отмена",
+                    state=[UserState.user_setting_hour, UserState.user_setting_minute])
 async def cancellation(message: types.Message):
     await UserState.user_authorized.set()
-    await message.answer("Действие отменено", reply_markup =  types.ReplyKeyboardRemove())
+    await message.answer("Действие отменено", reply_markup=types.ReplyKeyboardRemove())
 
-@dp.message_handler(state = UserState.user_setting_hour)
+
+@dp.message_handler(state=UserState.user_setting_hour)
 async def hour_input(message: types.Message, state: FSMContext):
     try:
         hour = int(message.text)
@@ -183,10 +240,11 @@ async def hour_input(message: types.Message, state: FSMContext):
             await message.answer("⛔️ Ошибка! Введен неверный формат времени")
             return
         await UserState.user_setting_minute.set()
-        await state.update_data(hour = hour)
+        await state.update_data(hour=hour)
         await message.answer("Хорошо, для завершения настройки пришли мне минуту (от 0 до 59)")
 
-@dp.message_handler(state = UserState.user_setting_minute)
+
+@dp.message_handler(state=UserState.user_setting_minute)
 async def time_set(message: types.Message, state: FSMContext):
     try:
         minute = int(message.text)
@@ -202,32 +260,35 @@ async def time_set(message: types.Message, state: FSMContext):
         auth.hour = hour
         auth.minute = minute
         scheduler.remove_job(auth.user_id)
-        scheduler.add_job(notification, "cron", hour = hour, minute = minute, id = auth.user_id, args = (auth,))
+        scheduler.add_job(notification, "cron", hour=hour, minute=minute, id=auth.user_id, args=(auth,))
         session.add(auth)
         session.commit()
         await UserState.user_authorized.set()
-        await message.answer(f"✅ Готово! Теперь ты будешь получать рассылку о заменах в {hour}:{minute:02}", reply_markup = types.ReplyKeyboardRemove())
+        await message.answer(f"✅ Готово! Теперь ты будешь получать рассылку о заменах в {hour}:{minute:02}",
+                             reply_markup=types.ReplyKeyboardRemove())
 
-@dp.message_handler(commands = ["settings"], state = UserState.user_authorized)
+
+@dp.message_handler(commands=["settings"], state=UserState.user_authorized)
 async def settings(message: types.Message):
-    settings_menu = types.ReplyKeyboardMarkup(row_width = 1, one_time_keyboard = True)
+    settings_menu = types.ReplyKeyboardMarkup(row_width=1, one_time_keyboard=True)
     auth_data = session.query(Auth).filter(Auth.user_id == message.from_user.id).first()
-    if auth_data.notification == False:
-        enable_notifications_button = types.KeyboardButton(text = "Включить рассылку")
+    if auth_data.notification is False:
+        enable_notifications_button = types.KeyboardButton(text="Включить рассылку")
         settings_menu.add(enable_notifications_button)
     else:
-        disable_notifications_button = types.KeyboardButton(text = "Отключить рассылку")
+        disable_notifications_button = types.KeyboardButton(text="Отключить рассылку")
         settings_menu.add(disable_notifications_button)
 
-    notification_config_button = types.KeyboardButton(text = "Настройка времени рассылки")
+    notification_config_button = types.KeyboardButton(text="Настройка времени рассылки")
     settings_menu.add(notification_config_button)
-    
-    await message.answer("Список настроек: \n", reply_markup = settings_menu)
+
+    await message.answer("Список настроек: \n", reply_markup=settings_menu)
+
 
 if __name__ == "__main__":
-    scheduler.add_job(eduhouse_check, "interval", hours = 1) 
+    scheduler.add_job(eduhouse_check, "interval", hours=1)
     users = session.query(Auth).all()
     for user in users:
-        scheduler.add_job(notification, "cron", hour = user.hour, minute = user.minute, id  = user.user_id, args = (user,))
+        scheduler.add_job(notification, "cron", hour=user.hour, minute=user.minute, id=user.user_id, args=(user,))
     scheduler.start()
-    executor.start_polling(dp, skip_updates = True)
+    executor.start_polling(dp, skip_updates=True)
