@@ -1,6 +1,9 @@
-import requests, os
-from bs4 import BeautifulSoup
 from urllib.parse import urlparse
+
+import os
+import requests
+from bs4 import BeautifulSoup
+
 
 def download_docs():
     session = requests.Session()
@@ -11,8 +14,9 @@ def download_docs():
     req_body = r.text
     parsed_body = BeautifulSoup(req_body, "html.parser")
     logintoken = parsed_body.find("input", {"name": "logintoken"})['value']
-    payload = {"anchor":"", "logintoken": logintoken,"username":os.environ["EDUHOUSE_LOGIN"], "password": os.environ["EDUHOUSE_PASSWORD"], "rememberusername":1}
-    auth = session.post(url, data=payload, cookies = r.cookies)
+    payload = {"anchor": "", "logintoken": logintoken, "username": os.environ["EDUHOUSE_LOGIN"],
+               "password": os.environ["EDUHOUSE_PASSWORD"], "rememberusername": 1}
+    auth = session.post(url, data=payload, cookies=r.cookies)
 
     session_cookies = session.cookies.get_dict()
 
@@ -29,7 +33,7 @@ def download_docs():
         filename = os.path.basename(parsed_url.path)
         f = open(f"{filename}", "wb")
         filenames.append(f.name)
-        download_file = session.get(download_link, allow_redirects = True, cookies = session_cookies)
+        download_file = session.get(download_link, allow_redirects=True, cookies=session_cookies)
         f.write(download_file.content)
         f.close()
 
