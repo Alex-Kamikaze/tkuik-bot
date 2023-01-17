@@ -2,6 +2,7 @@ import datetime
 from aiogram import Bot, types
 from aiogram.dispatcher import Dispatcher, FSMContext
 from aiogram.contrib.fsm_storage.redis import RedisStorage2
+from aiogram.dispatcher.filters import Text
 from aiogram.utils import executor, exceptions
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram.utils.exceptions import BotBlocked
