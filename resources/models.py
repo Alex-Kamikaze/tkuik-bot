@@ -50,8 +50,10 @@ class Timetable(Base):
     group_id = Column(Integer, ForeignKey("groups.id"))
     pair_num = Column(Integer)
     pair_name = Column(String, nullable=False)
+    cab = Column(Integer)
     week_day_num = Column(Integer)
     denominator = Column(Boolean, default = False)
+    both_weeks = Column(Boolean, default = True)
     group = relationship("Group", back_populates = "timetable")
 
 
