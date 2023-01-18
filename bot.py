@@ -43,7 +43,10 @@ async def notification(user: Auth):
     if not user.notification:
         return
     if len(user.group.subs) == 0:
-        await bot.send_message(user.user_id, "Привет! Для твоей группы не найдено актуальных замен")
+        try:
+            await bot.send_message(user.user_id, "Привет! Для твоей группы не найдено актуальных замен")
+        except BotBlocked:
+            return
     else:
         await bot.send_message(user.user_id,
                                "Привет! Начинаем рассылку актуальных замен\n"
