@@ -11,6 +11,28 @@ from low_level.parser import *
 from resources.models import *
 from resources.states import *
 
+term_begin = 1
+
+''' TODO:
+    Номер недели с которой начался семестр - 2, началось со знаменателя. Т.е. если деление текущей недели на 2 дает остаток, значит это числитель, иначе знаменатель.
+    В базе данных False - это числитель, True - знаменатель.
+    Нужно создать переменную, которая хранит с чего начался семестр - с числителя или знаменателя, для учета этих данных при вычислени.
+    Счет дней в базе начинаем с 0 (понедельник), и до 6 (воскресенье)
+    1) Написать функцию для расчета числителя/знаменателя.
+    2) Написать команду для вытаскивания из базы расписания для конкретной группы с учетом замен.
+'''
+
+def week_denominator_calculate(weeknum: int):
+    if term_begin == 0:
+        if weeknum % 2 != 0:
+            return 1
+        else:
+            return 0
+    elif term_begin == 1:
+        if weeknum % 2 != 0:
+            return 0
+        else:
+            return 1
 
 async def eduhouse_check():
     files = download_docs()
@@ -43,7 +65,10 @@ async def notification(user: Auth):
     if not user.notification:
         return
     if len(user.group.subs) == 0:
-        await bot.send_message(user.user_id, "Привет! Для твоей группы не найдено актуальных замен")
+        try:
+            await bot.send_message(user.user_id, "Привет! Для твоей группы не найдено актуальных замен")
+        except BotBlocked:
+            return
     else:
         await bot.send_message(user.user_id,
                                "Привет! Начинаем рассылку актуальных замен\n"
@@ -260,6 +285,7 @@ async def time_set(message: types.Message, state: FSMContext):
         auth = session.query(Auth).filter(Auth.user_id == message.from_user.id).first()
         auth.hour = hour
         auth.minute = minute
+        auth.notification = True
         scheduler.remove_job(auth.user_id)
         scheduler.add_job(notification, "cron", hour=hour, minute=minute, id=auth.user_id, args=(auth,))
         session.add(auth)
@@ -285,6 +311,57 @@ async def settings(message: types.Message):
 
     await message.answer("Список настроек: \n", reply_markup=settings_menu)
 
+@dp.message_handler(commands=["timetable_today"], state=UserState.user_authorized)
+async def timetable_today(message: types.Message):
+    now = datetime.datetime.now()
+    current_denominator = week_denominator_calculate(now.isocalendar().week)
+    auth = session.query(Auth).filter(Auth.user_id==message.from_user.id).first()
+    timetable = session.query(Timetable).filter(Timetable.group_id==auth.group_id, Timetable.denominator==current_denominator, Timetable.both_weeks != current_denominator, Timetable.week_day_num==now.weekday()).all()
+    subs = session.query(Substitution).filter(Substitution.group==auth.group).all()
+    current_date = f"{now.day}.{now.month:02}.{now.year}"
+    result_text = f"📅 Твое расписание на {current_date}\n"
+    for lesson in timetable:
+        if len(subs) == 0:
+            if lesson.pair_name == "-":
+                continue
+            else:
+                result_text += f"🕒 {lesson.pair_num} пара:\n📖 Предмет по расписанию: {lesson.pair_name}\n🚪 Кабинет: {lesson.cab}\n\n"
+        else:
+            for substitution in subs:
+                if substitution.pair_num == lesson.pair_num and substitution.file.filename[0:10] == current_date:
+                    result_text += f"🕒 {substitution.pair_num} пара:\n📖 Предмет по замещению: {substitution.sub_pair}\n🚪 Кабинет: {substitution.cab}\n\n"
+                else:
+                    if lesson.pair_name == "-":
+                        continue
+                    else:
+                        result_text += f"🕒 {lesson.pair_num} пара:\n📖 Предмет по расписанию: {lesson.pair_name}\n🚪 Кабинет: {lesson.cab}\n\n"
+    await message.answer(result_text)
+
+@dp.message_handler(commands=["timetable_tomorrow"], state=UserState.user_authorized)
+async def timetable_today(message: types.Message):
+    tomorrow = datetime.datetime.today() + datetime.timedelta(days=1)
+    current_denominator = week_denominator_calculate(tomorrow.isocalendar().week)
+    auth = session.query(Auth).filter(Auth.user_id==message.from_user.id).first()
+    timetable = session.query(Timetable).filter(Timetable.group_id==auth.group_id, Timetable.denominator==current_denominator, Timetable.both_weeks != current_denominator, Timetable.week_day_num==tomorrow.weekday()).all()
+    subs = session.query(Substitution).filter(Substitution.group==auth.group).all()
+    tomorrow_date = f"{tomorrow.day}.{tomorrow.month:02}.{tomorrow.year}"
+    result_text = f"📅 Твое расписание на {tomorrow_date}\n"
+    for lesson in timetable:
+        if len(subs) == 0:
+            if lesson.pair_name == "-":
+                continue
+            else:
+                result_text += f"🕒 {lesson.pair_num} пара:\n📖 Предмет по расписанию: {lesson.pair_name}\n🚪 Кабинет: {lesson.cab}\n\n"
+        else:
+            for substitution in subs:
+                if substitution.pair_num == lesson.pair_num and substitution.file.filename[0:10] == tomorrow_date:
+                    result_text += f"🕒 {substitution.pair_num} пара:\n📖 Предмет по замещению: {substitution.sub_pair}\n🚪 Кабинет: {substitution.cab}\n\n"
+                else:
+                    if lesson.pair_name == "-":
+                        continue
+                    else:
+                        result_text += f"🕒 {lesson.pair_num} пара:\n📖 Предмет по расписанию: {lesson.pair_name}\n🚪 Кабинет: {lesson.cab}\n\n"
+    await message.answer(result_text)
 
 if __name__ == "__main__":
     scheduler.add_job(eduhouse_check, "interval", hours=1)
