@@ -34,6 +34,12 @@ def week_denominator_calculate(weeknum: int):
         else:
             return 1
 
+def both_week_calculate(current_denominator):
+    if current_denominator == 0:
+        return (0,1)
+    elif current_denominator == 1:
+        return (0,)            
+
 async def eduhouse_check():
     files = download_docs()
     db_files = session.query(ParsedFiles).all()
@@ -316,13 +322,21 @@ async def timetable_today(message: types.Message):
     now = datetime.datetime.now()
     current_denominator = week_denominator_calculate(now.isocalendar().week)
     auth = session.query(Auth).filter(Auth.user_id==message.from_user.id).first()
-    timetable = session.query(Timetable).filter(Timetable.group_id==auth.group_id, Timetable.denominator==current_denominator, Timetable.both_weeks != current_denominator, Timetable.week_day_num==now.weekday()).all()
+    timetable = session.query(Timetable).filter(Timetable.group_id==auth.group_id, Timetable.denominator==current_denominator, Timetable.week_day_num==now.weekday()).all()
     if timetable is None:
         await message.answer("Ошибка: не найдено данных для твоего расписания! Возможно, твоя группа еще не появилась в базе данных в таблице расписаний")
         return
     subs = session.query(Substitution).filter(Substitution.group==auth.group).all()
     current_date = f"{now.day}.{now.month:02}.{now.year}"
     result_text = f"📅 Твое расписание на {current_date}\n"
+    for filter_lesson in timetable:
+        if current_denominator == 0 and filter_lesson.both_weeks in (0,1):
+            continue
+        elif current_denominator == 1 and filter_lesson == 1:
+            continue
+        else:
+            timetable.remove(filter_lesson)
+
     for lesson in timetable:
         if len(subs) == 0:
             if lesson.pair_name == "-":
@@ -345,13 +359,23 @@ async def timetable_today(message: types.Message):
     tomorrow = datetime.datetime.today() + datetime.timedelta(days=1)
     current_denominator = week_denominator_calculate(tomorrow.isocalendar().week)
     auth = session.query(Auth).filter(Auth.user_id==message.from_user.id).first()
-    timetable = session.query(Timetable).filter(Timetable.group_id==auth.group_id, Timetable.denominator==current_denominator, Timetable.both_weeks != current_denominator, Timetable.week_day_num==tomorrow.weekday()).all()
+    timetable = session.query(Timetable).filter(Timetable.group_id==auth.group_id, Timetable.denominator==current_denominator, Timetable.week_day_num==tomorrow.weekday()).all()
+    print(current_denominator)
+    print(timetable)
     if timetable is None:
         await message.answer("Ошибка: не найдено данных для твоего расписания! Возможно, твоя группа еще не появилась в базе данных в таблице расписаний")
         return
     subs = session.query(Substitution).filter(Substitution.group==auth.group).all()
     tomorrow_date = f"{tomorrow.day}.{tomorrow.month:02}.{tomorrow.year}"
     result_text = f"📅 Твое расписание на {tomorrow_date}\n"
+    for filter_lesson in timetable:
+        if current_denominator == 0 and filter_lesson.both_weeks in (0,1):
+            continue
+        elif current_denominator == 1 and filter_lesson == 1:
+            continue
+        else:
+            timetable.remove(filter_lesson)
+
     for lesson in timetable:
         if len(subs) == 0:
             if lesson.pair_name == "-":
