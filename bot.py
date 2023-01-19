@@ -317,6 +317,9 @@ async def timetable_today(message: types.Message):
     current_denominator = week_denominator_calculate(now.isocalendar().week)
     auth = session.query(Auth).filter(Auth.user_id==message.from_user.id).first()
     timetable = session.query(Timetable).filter(Timetable.group_id==auth.group_id, Timetable.denominator==current_denominator, Timetable.both_weeks != current_denominator, Timetable.week_day_num==now.weekday()).all()
+    if timetable is None:
+        await message.answer("Ошибка: не найдено данных для твоего расписания! Возможно, твоя группа еще не появилась в базе данных в таблице расписаний")
+        return
     subs = session.query(Substitution).filter(Substitution.group==auth.group).all()
     current_date = f"{now.day}.{now.month:02}.{now.year}"
     result_text = f"📅 Твое расписание на {current_date}\n"
