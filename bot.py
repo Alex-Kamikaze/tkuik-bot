@@ -175,6 +175,7 @@ async def group_change(message: types.Message):
 async def get_substitutions(message: types.Message):
     auth = session.query(Auth).filter(Auth.user_id == message.from_user.id).first()
     substitutions = session.query(Substitution).filter(Substitution.group == auth.group).all()
+    subs_counter = 0
     if not substitutions:
         await message.answer("⭕️ Замещений для твоей группы не обнаружено")
     else:
@@ -184,6 +185,7 @@ async def get_substitutions(message: types.Message):
             filter_date = datetime.datetime.strptime(formated_date, '%d/%m/%Y').date()
             current_date = datetime.datetime.today().date()
             if filter_date < current_date:
+                subs_counter += 1
                 continue
             elif filter_date >= current_date:
                 await message.answer(
@@ -192,6 +194,10 @@ async def get_substitutions(message: types.Message):
                     f"📖 Предмет по расписанию: {substitution.init_pair}\n"
                     f"📝 Замена: {substitution.sub_pair}\n"
                     f"🚪 Кабинет: {substitution.cab}")
+        if subs_counter == len(substitutions):
+            await message.answer("⭕️ Замещений для твоей группы не обнаружено")
+        else:
+            await message.answer(f"Были найдено и пропущено неактуальных замен: {subs_counter}")
 
 
 @dp.message_handler(commands=["disable_notifications"], state=UserState.user_authorized)
@@ -322,7 +328,7 @@ async def timetable_today(message: types.Message):
     now = datetime.datetime.now()
     current_denominator = week_denominator_calculate(now.isocalendar().week)
     auth = session.query(Auth).filter(Auth.user_id==message.from_user.id).first()
-    timetable = session.query(Timetable).filter(Timetable.group_id==auth.group_id, Timetable.denominator==current_denominator, Timetable.week_day_num==now.weekday()).all()
+    timetable = session.query(Timetable).filter(Timetable.group_id==auth.group_id, Timetable.week_day_num==now.weekday()).all()
     if timetable is None:
         await message.answer("Ошибка: не найдено данных для твоего расписания! Возможно, твоя группа еще не появилась в базе данных в таблице расписаний")
         return
@@ -330,13 +336,13 @@ async def timetable_today(message: types.Message):
     current_date = f"{now.day}.{now.month:02}.{now.year}"
     result_text = f"📅 Твое расписание на {current_date}\n"
     for filter_lesson in timetable:
-        if current_denominator == 0 and filter_lesson.both_weeks in (0,1):
+        week_relation = (current_denominator, filter_lesson.both_weeks)
+        if current_denominator == 0 and (week_relation == (0, 1) or week_relation == (0, 0)):
             continue
-        elif current_denominator == 1 and filter_lesson == 1:
+        elif current_denominator == 1 and (week_relation == (1, 0) or week_relation == (1, 1)):
             continue
         else:
             timetable.remove(filter_lesson)
-
     for lesson in timetable:
         if len(subs) == 0:
             if lesson.pair_name == "-":
@@ -359,9 +365,7 @@ async def timetable_today(message: types.Message):
     tomorrow = datetime.datetime.today() + datetime.timedelta(days=1)
     current_denominator = week_denominator_calculate(tomorrow.isocalendar().week)
     auth = session.query(Auth).filter(Auth.user_id==message.from_user.id).first()
-    timetable = session.query(Timetable).filter(Timetable.group_id==auth.group_id, Timetable.denominator==current_denominator, Timetable.week_day_num==tomorrow.weekday()).all()
-    print(current_denominator)
-    print(timetable)
+    timetable = session.query(Timetable).filter(Timetable.group_id==auth.group_id, Timetable.week_day_num==tomorrow.weekday()).all()
     if timetable is None:
         await message.answer("Ошибка: не найдено данных для твоего расписания! Возможно, твоя группа еще не появилась в базе данных в таблице расписаний")
         return
@@ -369,9 +373,10 @@ async def timetable_today(message: types.Message):
     tomorrow_date = f"{tomorrow.day}.{tomorrow.month:02}.{tomorrow.year}"
     result_text = f"📅 Твое расписание на {tomorrow_date}\n"
     for filter_lesson in timetable:
-        if current_denominator == 0 and filter_lesson.both_weeks in (0,1):
+        week_relation = (current_denominator, filter_lesson.both_weeks)
+        if current_denominator == 0 and (week_relation == (0, 1) or week_relation == (0, 0)):
             continue
-        elif current_denominator == 1 and filter_lesson == 1:
+        elif current_denominator == 1 and (week_relation == (1, 0) or week_relation == (1, 1)):
             continue
         else:
             timetable.remove(filter_lesson)
