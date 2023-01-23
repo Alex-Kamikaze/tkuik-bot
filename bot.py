@@ -323,7 +323,7 @@ async def settings(message: types.Message):
 
     await message.answer("Список настроек: \n", reply_markup=settings_menu)
 
-@dp.message_handler(commands=["timetable_today"], state=UserState.user_authorized)
+@dp.message_handler(commands = ["timetable_today"], state = UserState.user_authorized)
 async def timetable_today(message: types.Message):
     now = datetime.datetime.now()
     current_denominator = week_denominator_calculate(now.isocalendar().week)
@@ -336,12 +336,11 @@ async def timetable_today(message: types.Message):
     current_date = f"{now.day}.{now.month:02}.{now.year}"
     result_text = f"📅 Твое расписание на {current_date}\n"
     for filter_lesson in timetable:
-        week_relation = (current_denominator, filter_lesson.both_weeks)
-        if current_denominator == 0 and (week_relation == (0, 1) or week_relation == (0, 0)):
+        if filter_lesson.denominator == 2:
             continue
-        elif current_denominator == 1 and (week_relation == (1, 0) or week_relation == (1, 1)):
+        elif filter_lesson.denominator == current_denominator:
             continue
-        else:
+        elif filter_lesson.denominator != current_denominator:
             timetable.remove(filter_lesson)
     for lesson in timetable:
         if len(subs) == 0:
@@ -373,12 +372,11 @@ async def timetable_today(message: types.Message):
     tomorrow_date = f"{tomorrow.day}.{tomorrow.month:02}.{tomorrow.year}"
     result_text = f"📅 Твое расписание на {tomorrow_date}\n"
     for filter_lesson in timetable:
-        week_relation = (current_denominator, filter_lesson.both_weeks)
-        if current_denominator == 0 and (week_relation == (0, 1) or week_relation == (0, 0)):
+        if filter_lesson.denominator == 2:
             continue
-        elif current_denominator == 1 and (week_relation == (1, 0) or week_relation == (1, 1)):
+        elif filter_lesson.denominator == current_denominator:
             continue
-        else:
+        elif filter_lesson.denominator != current_denominator:
             timetable.remove(filter_lesson)
 
     for lesson in timetable:

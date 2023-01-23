@@ -52,8 +52,7 @@ class Timetable(Base):
     pair_name = Column(String, nullable=False)
     cab = Column(Integer)
     week_day_num = Column(Integer)
-    denominator = Column(Boolean, default = False)
-    both_weeks = Column(Boolean, default = True)
+    denominator = Column(Integer, nullable = True, default = None)
     group = relationship("Group", back_populates = "timetable")
 
 
