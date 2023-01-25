@@ -53,8 +53,21 @@ async def eduhouse_check():
                 session.commit()
             remove_cache()
         else:
-            os.remove(file)
-            continue
+            substitutions = parse(file)
+            for substitution in substitutions:
+                group = session.query(Group).filter(Group.group_name == substitution.group).first()
+                if not group:
+                    group = Group(group_name = substitution.group)
+                    session.add(group)
+                    session.commit()
+                substitution_check = session.query(Substitution).filter(Substitution.pair_num == substitution.pair_num, Substitution.group == group, Substitution.sub_pair == substitution.sub_pair).first()
+                if substitution_check is None:
+                    sub_db = Substitution(file=new_file, pair_num=substitution.pair_num, init_pair=substitution.init_pair, sub_pair=substitution.sub_pair, cab=substitution.cab, group=group)
+                    session.add(sub_db)
+                    session.commit()
+                else:
+                    continue
+            remove_cache()
     session.commit()
 
 
@@ -229,7 +242,10 @@ async def help(message: types.Message):
         "<i>/change_group</i> - Смена группы\n"
         "<i>/substitutions</i> - Получение актуальных замен для твоей группы\n"
         "<i>/disable_notifications</i> - Отключение ежедневной рассылки\n"
-        "<i>/enable_notifications</i> - Включение ежедневной рассылки")
+        "<i>/enable_notifications</i> - Включение ежедневной рассылки\n"
+        "<i>/timetable_today</i> - Расписание твоей группы на сегодня\n"
+        "<i>/timetable_tomorrow</i> - Расписание твоей группы на завтра\n"
+    )
 
 
 @dp.errors_handler(exception=exceptions.RetryAfter)
@@ -388,7 +404,7 @@ async def timetable_today(message: types.Message):
     await message.answer(result_text)
 
 if __name__ == "__main__":
-    scheduler.add_job(eduhouse_check, "interval", hours=1)
+    scheduler.add_job(eduhouse_check, "interval", minutes=2)
     users = session.query(Auth).all()
     for user in users:
         scheduler.add_job(notification, "cron", hour=user.hour, minute=user.minute, id=user.user_id, args=(user,))
