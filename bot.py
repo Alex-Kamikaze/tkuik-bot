@@ -83,13 +83,15 @@ async def notification(user: Auth):
         await bot.send_message(user.user_id,
                                "Привет! Начинаем рассылку актуальных замен\n"
                                "Для твоей группы найдены следующие замены: ")
-    for substitution in user.group.subs:
-        try:
+    try:
+        for substitution in user.group.subs:
+            skip_counter = 0
             date = substitution.file.filename[0:10]
             formated_date = date.replace(".", "/")
             filter_date = datetime.datetime.strptime(formated_date, '%d/%m/%Y').date()
             current_date = datetime.datetime.today().date()
             if filter_date < current_date:
+                skip_counter += 1
                 continue
             elif filter_date >= current_date:
                 await bot.send_message(user.user_id,
@@ -97,8 +99,9 @@ async def notification(user: Auth):
                                        f"📖 Предмет по расписанию: {substitution.init_pair}\n📝 "
                                        f"Замена: {substitution.sub_pair}\n🚪 "
                                        f"Кабинет: {substitution.cab}")
-        except BotBlocked:
-            return
+        await bot.send_message(user.user_id, f"Пропущено {skip_counter} неактуальных замен")
+    except BotBlocked:
+        return
 
 
 bot = Bot(token=os.environ["BOT_TOKEN"], parse_mode='html')
@@ -342,32 +345,36 @@ async def timetable_today(message: types.Message):
     subs = session.query(Substitution).filter(Substitution.group==auth.group).all()
     current_date = f"{now.day}.{now.month:02}.{now.year}"
     result_text = f"📅 Твое расписание на {current_date}\n"
-    for filter_lesson in timetable:
-        if filter_lesson.denominator == 2:
+
+    for lesson_check in timetable:
+        if lesson_check.denominator == 2 or lesson_check.denominator == current_denominator:
             continue
-        elif filter_lesson.denominator == current_denominator:
-            continue
-        elif filter_lesson.denominator != current_denominator:
-            timetable.remove(filter_lesson)
-    for lesson in timetable:
-        if len(subs) == 0:
+        else:
+            timetable.remove(lesson_check)
+
+    if len(subs) == 0:
+        for lesson in timetable:
             if lesson.pair_name == "-":
                 continue
             else:
                 result_text += f"🕒 {lesson.pair_num} пара:\n📖 Предмет по расписанию: {lesson.pair_name}\n🚪 Кабинет: {lesson.cab}\n\n"
-        else:
+    else:
+        for lesson in timetable:
             for substitution in subs:
                 if substitution.pair_num == lesson.pair_num and substitution.file.filename[0:10] == current_date:
                     result_text += f"🕒 {substitution.pair_num} пара:\n📖 Предмет по замещению: {substitution.sub_pair}\n🚪 Кабинет: {substitution.cab}\n\n"
+                    break
                 else:
                     if lesson.pair_name == "-":
                         continue
                     else:
                         result_text += f"🕒 {lesson.pair_num} пара:\n📖 Предмет по расписанию: {lesson.pair_name}\n🚪 Кабинет: {lesson.cab}\n\n"
+                    break
+                
     await message.answer(result_text)
 
 @dp.message_handler(commands=["timetable_tomorrow"], state=UserState.user_authorized)
-async def timetable_today(message: types.Message):
+async def timetable_tomorrow(message: types.Message):
     tomorrow = datetime.datetime.today() + datetime.timedelta(days=1)
     current_denominator = week_denominator_calculate(tomorrow.isocalendar().week)
     auth = session.query(Auth).filter(Auth.user_id==message.from_user.id).first()
@@ -376,35 +383,37 @@ async def timetable_today(message: types.Message):
         await message.answer("Ошибка: не найдено данных для твоего расписания! Возможно, твоя группа еще не появилась в базе данных в таблице расписаний")
         return
     subs = session.query(Substitution).filter(Substitution.group==auth.group).all()
-    tomorrow_date = f"{tomorrow.day}.{tomorrow.month:02}.{tomorrow.year}"
-    result_text = f"📅 Твое расписание на {tomorrow_date}\n"
+    current_date = f"{tomorrow.day}.{tomorrow.month:02}.{tomorrow.year}"
+    result_text = f"📅 Твое расписание на {current_date}\n"
     for filter_lesson in timetable:
-        if filter_lesson.denominator == 2:
+        if filter_lesson.denominator == 2 or filter_lesson.denominator == current_denominator:
             continue
-        elif filter_lesson.denominator == current_denominator:
-            continue
-        elif filter_lesson.denominator != current_denominator:
+        else:
             timetable.remove(filter_lesson)
-
-    for lesson in timetable:
-        if len(subs) == 0:
+    
+    if len(subs) == 0:
+        for lesson in timetable:
             if lesson.pair_name == "-":
                 continue
             else:
                 result_text += f"🕒 {lesson.pair_num} пара:\n📖 Предмет по расписанию: {lesson.pair_name}\n🚪 Кабинет: {lesson.cab}\n\n"
-        else:
+    else:
+        for lesson in timetable:
             for substitution in subs:
-                if substitution.pair_num == lesson.pair_num and substitution.file.filename[0:10] == tomorrow_date:
+                if substitution.pair_num == lesson.pair_num and substitution.file.filename[0:10] == current_date:
                     result_text += f"🕒 {substitution.pair_num} пара:\n📖 Предмет по замещению: {substitution.sub_pair}\n🚪 Кабинет: {substitution.cab}\n\n"
+                    break
                 else:
                     if lesson.pair_name == "-":
                         continue
                     else:
                         result_text += f"🕒 {lesson.pair_num} пара:\n📖 Предмет по расписанию: {lesson.pair_name}\n🚪 Кабинет: {lesson.cab}\n\n"
+                    break
+
     await message.answer(result_text)
 
 if __name__ == "__main__":
-    scheduler.add_job(eduhouse_check, "interval", minutes=2)
+    scheduler.add_job(eduhouse_check, "interval", hours = 1)
     users = session.query(Auth).all()
     for user in users:
         scheduler.add_job(notification, "cron", hour=user.hour, minute=user.minute, id=user.user_id, args=(user,))
