@@ -84,8 +84,8 @@ async def notification(user: Auth):
                                "Привет! Начинаем рассылку актуальных замен\n"
                                "Для твоей группы найдены следующие замены: ")
     try:
+        skip_counter = 0
         for substitution in user.group.subs:
-            skip_counter = 0
             date = substitution.file.filename[0:10]
             formated_date = date.replace(".", "/")
             filter_date = datetime.datetime.strptime(formated_date, '%d/%m/%Y').date()
@@ -99,7 +99,8 @@ async def notification(user: Auth):
                                        f"📖 Предмет по расписанию: {substitution.init_pair}\n📝 "
                                        f"Замена: {substitution.sub_pair}\n🚪 "
                                        f"Кабинет: {substitution.cab}")
-        await bot.send_message(user.user_id, f"Пропущено {skip_counter} неактуальных замен")
+        if skip_counter > 0:
+            await bot.send_message(user.user_id, f"Пропущено {skip_counter} неактуальных замен")
     except BotBlocked:
         return
 
