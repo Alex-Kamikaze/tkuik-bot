@@ -54,6 +54,7 @@ async def eduhouse_check():
             remove_cache()
         else:
             substitutions = parse(file)
+            db_file = session.query(ParsedFiles).filter(ParsedFiles.filename == file).first()
             for substitution in substitutions:
                 group = session.query(Group).filter(Group.group_name == substitution.group).first()
                 if not group:
@@ -62,7 +63,7 @@ async def eduhouse_check():
                     session.commit()
                 substitution_check = session.query(Substitution).filter(Substitution.pair_num == substitution.pair_num, Substitution.group == group, Substitution.sub_pair == substitution.sub_pair).first()
                 if substitution_check is None:
-                    sub_db = Substitution(file=new_file, pair_num=substitution.pair_num, init_pair=substitution.init_pair, sub_pair=substitution.sub_pair, cab=substitution.cab, group=group)
+                    sub_db = Substitution(file=db_file, pair_num=substitution.pair_num, init_pair=substitution.init_pair, sub_pair=substitution.sub_pair, cab=substitution.cab, group=group)
                     session.add(sub_db)
                     session.commit()
                 else:
