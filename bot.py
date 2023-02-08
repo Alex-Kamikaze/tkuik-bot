@@ -205,7 +205,7 @@ async def get_substitutions(message: types.Message):
                     f"🚪 Кабинет: {substitution.cab}")
         if subs_counter == len(substitutions):
             await message.answer("⭕️ Замещений для твоей группы не обнаружено")
-        else:
+        elif subs_counter > 0:
             await message.answer(f"Были найдено и пропущено неактуальных замен: {subs_counter}")
 
 
@@ -345,7 +345,7 @@ async def timetable_today(message: types.Message):
         await message.answer("Ошибка: не найдено данных для твоего расписания! Возможно, твоя группа еще не появилась в базе данных в таблице расписаний")
         return
     subs = session.query(Substitution).filter(Substitution.group==auth.group).all()
-    current_date = f"{now.day}.{now.month:02}.{now.year}"
+    current_date = f"{now.day:02}.{now.month:02}.{now.year}"
     result_text = f"📅 Твое расписание на {current_date}\n"
 
     for lesson_check in timetable:
@@ -366,12 +366,11 @@ async def timetable_today(message: types.Message):
                 if substitution.pair_num == lesson.pair_num and substitution.file.filename[0:10] == current_date:
                     result_text += f"🕒 {substitution.pair_num} пара:\n📖 Предмет по замещению: {substitution.sub_pair}\n🚪 Кабинет: {substitution.cab}\n\n"
                     break
+            else:
+                if lesson.pair_name == "-":
+                    continue
                 else:
-                    if lesson.pair_name == "-":
-                        continue
-                    else:
-                        result_text += f"🕒 {lesson.pair_num} пара:\n📖 Предмет по расписанию: {lesson.pair_name}\n🚪 Кабинет: {lesson.cab}\n\n"
-                    break
+                    result_text += f"🕒 {lesson.pair_num} пара:\n📖 Предмет по расписанию: {lesson.pair_name}\n🚪 Кабинет: {lesson.cab}\n\n"
                 
     await message.answer(result_text)
 
@@ -385,7 +384,7 @@ async def timetable_tomorrow(message: types.Message):
         await message.answer("Ошибка: не найдено данных для твоего расписания! Возможно, твоя группа еще не появилась в базе данных в таблице расписаний")
         return
     subs = session.query(Substitution).filter(Substitution.group==auth.group).all()
-    current_date = f"{tomorrow.day}.{tomorrow.month:02}.{tomorrow.year}"
+    current_date = f"{tomorrow.day:02}.{tomorrow.month:02}.{tomorrow.year}"
     result_text = f"📅 Твое расписание на {current_date}\n"
     for filter_lesson in timetable:
         if filter_lesson.denominator == 2 or filter_lesson.denominator == current_denominator:
@@ -405,17 +404,16 @@ async def timetable_tomorrow(message: types.Message):
                 if substitution.pair_num == lesson.pair_num and substitution.file.filename[0:10] == current_date:
                     result_text += f"🕒 {substitution.pair_num} пара:\n📖 Предмет по замещению: {substitution.sub_pair}\n🚪 Кабинет: {substitution.cab}\n\n"
                     break
+            else:
+                if lesson.pair_name == "-":
+                    continue
                 else:
-                    if lesson.pair_name == "-":
-                        continue
-                    else:
-                        result_text += f"🕒 {lesson.pair_num} пара:\n📖 Предмет по расписанию: {lesson.pair_name}\n🚪 Кабинет: {lesson.cab}\n\n"
-                    break
+                    result_text += f"🕒 {lesson.pair_num} пара:\n📖 Предмет по расписанию: {lesson.pair_name}\n🚪 Кабинет: {lesson.cab}\n\n"
 
     await message.answer(result_text)
 
 if __name__ == "__main__":
-    scheduler.add_job(eduhouse_check, "interval", hours = 1)
+    scheduler.add_job(eduhouse_check, "interval", minutes = 30)
     users = session.query(Auth).all()
     for user in users:
         scheduler.add_job(notification, "cron", hour=user.hour, minute=user.minute, id=user.user_id, args=(user,))
