@@ -25,12 +25,6 @@ def week_denominator_calculate(weeknum: int):
         else:
             return 1
 
-def both_week_calculate(current_denominator):
-    if current_denominator == 0:
-        return (0,1)
-    elif current_denominator == 1:
-        return (0,)            
-
 async def eduhouse_check():
     files = download_docs()
     db_files = session.query(ParsedFiles).all()
@@ -103,8 +97,16 @@ async def notification(user: Auth):
         if skip_counter > 0:
             await bot.send_message(user.user_id, f"Пропущено {skip_counter} неактуальных замен")
     except BotBlocked:
-        return
+        session.delete(user)
+        session.commit()
 
+async def start_notification():
+    all_users = session.query(Auth).all()
+    for user in all_users:
+        try:
+            await bot.send_message(user.user_id, "В случае, если бот не отвечает на ваши вопросы, напишите /start")
+        except BotBlocked:
+            continue
 
 bot = Bot(token=os.environ["BOT_TOKEN"], parse_mode='html')
 storage = RedisStorage2("localhost", 6379, pool_size=40, prefix="interesting_fsm_key")
@@ -205,8 +207,6 @@ async def get_substitutions(message: types.Message):
                     f"🚪 Кабинет: {substitution.cab}")
         if subs_counter == len(substitutions):
             await message.answer("⭕️ Замещений для твоей группы не обнаружено")
-        elif subs_counter > 0:
-            await message.answer(f"Были найдено и пропущено неактуальных замен: {subs_counter}")
 
 
 @dp.message_handler(commands=["disable_notifications"], state=UserState.user_authorized)
