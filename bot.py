@@ -11,7 +11,7 @@ from low_level.parser import *
 from resources.models import *
 from resources.states import *
 
-term_begin = 1
+term_begin = 1 #Если семестр начался с числителя, то 0, если со знаменателя, то 1
 
 def week_denominator_calculate(weeknum: int):
     if term_begin == 0:
@@ -100,14 +100,6 @@ async def notification(user: Auth):
         session.delete(user)
         session.commit()
 
-async def start_notification():
-    all_users = session.query(Auth).all()
-    for user in all_users:
-        try:
-            await bot.send_message(user.user_id, "В случае, если бот не отвечает на ваши вопросы, напишите /start")
-        except BotBlocked:
-            continue
-
 bot = Bot(token=os.environ["BOT_TOKEN"], parse_mode='html')
 storage = RedisStorage2("localhost", 6379, pool_size=40, prefix="interesting_fsm_key")
 dp = Dispatcher(bot, storage=storage)
@@ -122,25 +114,12 @@ async def start(message: types.Message):
         await message.answer(
             f"Привет! 👋\nТы ранее уже авторизовывался в группе {auth.group.group_name}\n"
             f"Если ты хочешь сменить группу, используй команду /change_group\n"
-            f"Для получения справки и списка доступных команд используй команду /help\n"
-            f"(Разработал и выпустил - Каравайчик Александр)")
+            f"Для получения справки и списка доступных команд используй команду /help\n")
     else:
-        await UserState.user_default_state.set()
+        await UserState.user_group_required.set()
         await message.answer(
             text="Привет! 👋\nПрежде чем начать пользоваться ботом, тебе необходимо авторизоваться.\n"
-                 "Для этого используй команду <i>/auth</i>\n"
-                 "(Разработал и выпустил - Каравайчик Александр)")
-
-
-@dp.message_handler(commands=["auth"], state=UserState.user_default_state)
-async def ask_group(message: types.Message):
-    await UserState.user_group_required.set()
-    await message.answer(
-        "✏️ Для того, чтобы тебя авторизовать, мне необходимо знать, в какой группе ты учишься. "
-        "Напиши свою учебную группу, например 9ПО-21. "
-        "Если твоей группы нет в списке, значит для нее еще не было добавлено замещений. "
-        "Не переживай, как только они появятся, твоя группа будет добавлена в базу.")
-
+                 "Для этого напиши мне свою учебную группу, например 9ПО-21\n")
 
 @dp.message_handler(state=UserState.user_group_required)
 async def authorization(message: types.Message):
@@ -239,11 +218,9 @@ async def enable_notifications(message: types.Message):
 async def help(message: types.Message):
     await message.answer(
         "📜 Справка: Данный бот помогает студентам узнавать об изменениях в раписании, которые выкладываются на портале"
-        "\nРазработал студент группы 9ПО-21 Каравайчик Александр\n"
         "Список команд:\n"
-        "<i>/start</i> - Начало работы\n"
+        "<i>/start</i> - Начало работы и авторизация\n"
         "<i>/help</i> - Справка\n"
-        "<i>/auth</i> - Авторизация\n"
         "<i>/change_group</i> - Смена группы\n"
         "<i>/substitutions</i> - Получение актуальных замен для твоей группы\n"
         "<i>/disable_notifications</i> - Отключение ежедневной рассылки\n"
@@ -341,7 +318,7 @@ async def timetable_today(message: types.Message):
     current_denominator = week_denominator_calculate(now.isocalendar().week)
     auth = session.query(Auth).filter(Auth.user_id==message.from_user.id).first()
     timetable = session.query(Timetable).filter(Timetable.group_id==auth.group_id, Timetable.week_day_num==now.weekday()).all()
-    if timetable is None:
+    if len(timetable) == 0:
         await message.answer("Ошибка: не найдено данных для твоего расписания! Возможно, твоя группа еще не появилась в базе данных в таблице расписаний")
         return
     subs = session.query(Substitution).filter(Substitution.group==auth.group).all()
@@ -380,7 +357,7 @@ async def timetable_tomorrow(message: types.Message):
     current_denominator = week_denominator_calculate(tomorrow.isocalendar().week)
     auth = session.query(Auth).filter(Auth.user_id==message.from_user.id).first()
     timetable = session.query(Timetable).filter(Timetable.group_id==auth.group_id, Timetable.week_day_num==tomorrow.weekday()).all()
-    if timetable is None:
+    if len(timetable) == 0:
         await message.answer("Ошибка: не найдено данных для твоего расписания! Возможно, твоя группа еще не появилась в базе данных в таблице расписаний")
         return
     subs = session.query(Substitution).filter(Substitution.group==auth.group).all()
