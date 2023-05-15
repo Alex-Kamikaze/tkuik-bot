@@ -1,4 +1,4 @@
-# eduhouse-parser-dev
+# TKUIK-Bot
 Бот для парса портала Eduhouse
 
 На данный момент официальная стабильная версия бота находится по этому адресу t.me/tkuik_stable_bot
